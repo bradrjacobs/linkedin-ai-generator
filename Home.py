@@ -11,8 +11,24 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Load environment variables
 load_dotenv()
 
+# Debug API key loading
+try:
+    api_key = st.secrets["OPENAI_API_KEY"]
+    st.write("API Key status:", "Not set" if not api_key else "Set (length: " + str(len(api_key)) + ")")
+except Exception as e:
+    st.error(f"Error loading API key from secrets: {str(e)}")
+    st.info("Make sure you've added OPENAI_API_KEY to your Streamlit secrets.")
+    st.stop()
+
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+try:
+    client = OpenAI(api_key=api_key)
+    # Test the client with a simple API call
+    models = client.models.list()
+    st.success("OpenAI client initialized successfully!")
+except Exception as e:
+    st.error(f"Error initializing OpenAI client: {str(e)}")
+    st.stop()
 
 # Initialize session state
 if "profiles" not in st.session_state:
