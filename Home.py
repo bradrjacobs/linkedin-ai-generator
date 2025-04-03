@@ -33,14 +33,13 @@ try:
     # Set environment variable first
     os.environ["OPENAI_API_KEY"] = api_key
     
-    # Create client with minimal configuration
-    client = OpenAI(
-        api_key=api_key,
-    )
+    # Create client after setting environment variable
+    client = OpenAI(api_key=api_key)
     
     # Test with a simple API call
-    response = client.models.list()
+    models = client.models.list()
     st.success("✅ OpenAI client initialized and tested successfully!")
+    st.write("Available models:", [model.id for model in models.data[:5]])
 except Exception as e:
     st.error(f"❌ Error initializing OpenAI client: {str(e)}")
     st.write("Full error details:", e)
