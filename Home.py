@@ -29,16 +29,17 @@ except Exception as e:
 
 # Initialize OpenAI client
 try:
-    # Initialize with just the API key
-    client = OpenAI(
-        api_key=api_key,
-    )
-    # Simple test call
+    # Create client with minimal configuration
+    client = OpenAI()  # Let it use the environment variable
+    os.environ["OPENAI_API_KEY"] = api_key  # Set the environment variable
+    
+    # Test with a simple API call
     response = client.models.list()
     st.success("✅ OpenAI client initialized and tested successfully!")
 except Exception as e:
     st.error(f"❌ Error initializing OpenAI client: {str(e)}")
     st.write("Full error details:", e)
+    st.write("OpenAI version:", OpenAI.__version__)  # Add version info for debugging
     st.stop()
 
 # Initialize session state
