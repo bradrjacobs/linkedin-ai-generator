@@ -22,7 +22,7 @@ except Exception as e:
 
 # Initialize OpenAI client
 try:
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key)  # Use the api_key we got from st.secrets
     # Test the client with a simple API call
     models = client.models.list()
     st.success("OpenAI client initialized successfully!")
