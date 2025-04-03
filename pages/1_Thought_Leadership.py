@@ -1,73 +1,64 @@
 import streamlit as st
 import requests
-from datetime import datetime
+import json
 import logging
+import os
+from datetime import datetime
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Server configuration
-SERVER_URL = "http://localhost:8000"
+# Load environment variables
+load_dotenv()
 
-def save_thought_leadership(strategy: str) -> bool:
-    """Save global thought leadership strategy to the backend"""
+# Set up API URL
+API_URL = os.getenv("API_URL", "https://mylance-api.herokuapp.com")
+
+def save_thought_leadership_strategy(strategy):
+    """Save thought leadership strategy to API"""
     try:
-        response = requests.post(
-            f"{SERVER_URL}/save-thought-leadership",
-            json={"strategy": strategy}
-        )
+        response = requests.post(f"{API_URL}/save-thought-leadership", json={"strategy": strategy})
         response.raise_for_status()
-        st.success("Thought leadership strategy saved successfully!")
         return True
     except Exception as e:
-        st.error(f"Error saving thought leadership strategy: {str(e)}")
-        logging.error(f"Error saving thought leadership strategy: {e}", exc_info=True)
+        logging.error(f"Error saving thought leadership strategy: {e}")
         return False
 
-def get_thought_leadership() -> str:
-    """Get global thought leadership strategy from the backend"""
+def get_thought_leadership_strategy():
+    """Get thought leadership strategy from API"""
     try:
-        response = requests.get(f"{SERVER_URL}/get-thought-leadership")
+        response = requests.get(f"{API_URL}/get-thought-leadership")
         response.raise_for_status()
         return response.json().get("strategy", "")
     except Exception as e:
-        st.error(f"Error loading thought leadership strategy: {str(e)}")
-        logging.error(f"Error loading thought leadership strategy: {e}", exc_info=True)
+        logging.error(f"Error getting thought leadership strategy: {e}")
         return ""
 
-def main():
-    st.title("Mylance Thought Leadership Strategy")
-    
-    # Add some context about what this page is for
-    st.markdown("""
-    This page contains Mylance's global thought leadership strategy. This strategy will be used across all content generation
-    to maintain consistent messaging and positioning.
-    
-    Use this space to define:
-    - Key themes and topics
-    - Core messaging points
-    - Brand voice and tone
-    - Content pillars
-    - Target audience perspectives
-    """)
-    
-    # Get existing strategy
-    current_strategy = get_thought_leadership()
-    
-    # Create a text area for the strategy
+# Page configuration
+st.set_page_config(page_title="Thought Leadership Strategy", page_icon="📊", layout="wide")
+
+st.title("Thought Leadership Strategy")
+st.markdown("""
+This page helps you define Mylance's thought leadership strategy. This strategy will guide the content generation for all users.
+""")
+
+# Load current strategy
+current_strategy = get_thought_leadership_strategy()
+
+# Strategy input
+with st.form("thought_leadership_form"):
     strategy = st.text_area(
-        "Global Thought Leadership Strategy",
+        "Define Mylance's Thought Leadership Strategy",
         value=current_strategy,
-        height=400,
-        help="Write the detailed thought leadership strategy here. This will be used across all content generation to maintain consistent messaging."
+        height=300,
+        help="Enter the overall thought leadership strategy that will guide content generation for all users."
     )
     
-    # Add a save button
-    if st.button("Save Global Strategy"):
-        if strategy.strip():  # Only save if there's content
-            save_thought_leadership(strategy)
+    submit = st.form_submit_button("Save Strategy")
+    
+    if submit and strategy:
+        if save_thought_leadership_strategy(strategy):
+            st.success("Strategy saved successfully!")
         else:
-            st.warning("Please enter a strategy before saving.")
-
-if __name__ == "__main__":
-    main()
+            st.error("Failed to save strategy. Please try again.")

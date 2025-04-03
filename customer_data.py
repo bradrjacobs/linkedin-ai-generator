@@ -1,12 +1,17 @@
 import streamlit as st
 import requests
 import logging
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Basic logging setup
 logging.basicConfig(level=logging.INFO)
 
 # Server URL
-SERVER_URL = "http://localhost:8000"
+SERVER_URL = os.getenv("API_URL", "https://mylance-api.herokuapp.com")  # Replace with your actual API URL
 
 def make_request(method, endpoint, json=None):
     """Simple request handler"""
