@@ -1,5 +1,4 @@
 import streamlit as st
-import requests
 import json
 from datetime import datetime
 import logging
@@ -7,9 +6,25 @@ import pytz
 import os
 from dotenv import load_dotenv
 import time
+from supabase import create_client, Client
+from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - APP_LOG - %(message)s')
+
+# Load environment variables
+supabase_url = st.secrets["SUPABASE_URL"]
+# Ensure the URL ends with .supabase.co
+if not supabase_url.endswith('.supabase.co'):
+    supabase_url = f"https://{supabase_url}.supabase.co"
+supabase_key = st.secrets["SUPABASE_KEY"]
+openai_api_key = st.secrets["OPENAI_API_KEY"]
+
+# Initialize Supabase client
+supabase: Client = create_client(supabase_url, supabase_key)
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=openai_api_key)
 
 # Set page config
 st.set_page_config(page_title="LinkedIn Content Strategy", layout="wide", initial_sidebar_state="expanded")
@@ -38,16 +53,15 @@ if "selected_profile" not in st.session_state:
     st.session_state.selected_profile = None
 if "profile_data" not in st.session_state:
     st.session_state.profile_data = None
-
-# API configuration
-API_URL = "http://localhost:8000"
+if "show_new_profile_form" not in st.session_state:
+    st.session_state.show_new_profile_form = False
 
 def load_profiles():
-    """Load all profiles from the backend"""
+    """Load all profiles from Supabase"""
     try:
-        response = requests.get(f"{API_URL}/profiles")
-        if response.status_code == 200:
-            return response.json()
+        response = supabase.table("profiles").select("*").execute()
+        if hasattr(response, 'data'):
+            return response.data
         return []
     except Exception as e:
         st.error(f"Failed to load profiles: {e}")
@@ -56,9 +70,9 @@ def load_profiles():
 def load_profile_data(profile_id):
     """Load data for a specific profile"""
     try:
-        response = requests.get(f"{API_URL}/profiles/{profile_id}")
-        if response.status_code == 200:
-            return response.json()
+        response = supabase.table("profiles").select("*").eq("id", profile_id).single().execute()
+        if hasattr(response, 'data'):
+            return response.data
         return None
     except Exception as e:
         st.error(f"Failed to load profile data: {e}")
@@ -67,25 +81,38 @@ def load_profile_data(profile_id):
 def save_profile_data(profile_id, data):
     """Save profile data"""
     try:
-        response = requests.put(
-            f"{API_URL}/profiles/{profile_id}",
-            json={"id": profile_id, "data": data}
-        )
-        if response.status_code == 200:
-            return True
-        else:
-            error_detail = response.json().get("detail", "Unknown error")
-            st.error(f"Failed to save profile data: {error_detail}")
-            return False
+        response = supabase.table("profiles").update(data).eq("id", profile_id).execute()
+        return True
     except Exception as e:
         st.error(f"Error saving profile data: {e}")
         return False
 
 def generate_strategy(profile_id):
-    """Generate content strategy"""
+    """Generate content strategy using OpenAI"""
     try:
-        response = requests.post(f"{API_URL}/profiles/{profile_id}/generate-strategy")
-        return response.status_code == 200
+        profile_data = load_profile_data(profile_id)
+        if not profile_data:
+            return False
+
+        prompt = f"""Create a content strategy for a LinkedIn profile with the following information:
+        Ideal Customer: {profile_data.get('icp', '')}
+        Pain Points: {profile_data.get('icp_pain_points', '')}
+        Unique Value: {profile_data.get('unique_value', '')}
+        Proof Points: {profile_data.get('proof_points', '')}
+        Topics: {profile_data.get('energizing_topics', '')}
+        Decision Makers: {profile_data.get('decision_makers', '')}
+        """
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=1000
+        )
+
+        strategy = response.choices[0].message.content
+        save_profile_data(profile_id, {"content_strategy": strategy})
+        return True
     except Exception as e:
         st.error(f"Failed to generate strategy: {e}")
         return False
@@ -93,13 +120,29 @@ def generate_strategy(profile_id):
 def generate_prompts(profile_id):
     """Generate LinkedIn prompts"""
     try:
-        response = requests.post(f"{API_URL}/profiles/{profile_id}/generate-prompts")
-        if response.status_code == 200:
-            return True
-        else:
-            error_detail = response.json().get("detail", "Unknown error")
-            st.error(f"Failed to generate prompts: {error_detail}")
+        profile_data = load_profile_data(profile_id)
+        if not profile_data:
             return False
+
+        prompt = f"""Generate 30 LinkedIn post prompts based on this strategy:
+        {profile_data.get('content_strategy', '')}
+        
+        Format each prompt as:
+        1. Hook: [attention-grabbing opening]
+        2. Content: [main post content]
+        3. Style: [First-Person Anecdotes/Listicles/Educational/Thought Leadership/Case Studies/Questions]
+        """
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=2000
+        )
+
+        prompts = response.choices[0].message.content
+        save_profile_data(profile_id, {"linkedin_prompts": prompts})
+        return True
     except Exception as e:
         st.error(f"Error generating prompts: {e}")
         return False
@@ -109,10 +152,8 @@ with st.sidebar:
     st.title("👤 Profile Management")
     
     # Add New Profile button at the top
-    if st.button("➕ New Profile"):
-        st.session_state.show_new_profile_form = True
-    else:
-        st.session_state.show_new_profile_form = False
+    if st.button("➕ New Profile", key="new_profile_button"):
+        st.session_state.show_new_profile_form = not st.session_state.show_new_profile_form
     
     # Profile selection
     profiles = load_profiles()
@@ -126,49 +167,47 @@ with st.sidebar:
     
     # Show new profile form when button is clicked
     if st.session_state.show_new_profile_form:
-        st.subheader("Create New Profile")
-        first_name = st.text_input("First Name")
-        last_name = st.text_input("Last Name")
-        email = st.text_input("Email (Optional)")
-        linkedin_url = st.text_input("LinkedIn URL (Optional)")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Create Profile"):
+        with st.form("new_profile_form"):
+            st.subheader("Create New Profile")
+            first_name = st.text_input("First Name", key="new_first_name")
+            last_name = st.text_input("Last Name", key="new_last_name")
+            email = st.text_input("Email (Optional)", key="new_email")
+            linkedin_url = st.text_input("LinkedIn URL (Optional)", key="new_linkedin_url")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                submit = st.form_submit_button("Create Profile")
+            with col2:
+                if st.form_submit_button("Cancel"):
+                    st.session_state.show_new_profile_form = False
+                    st.rerun()
+            
+            if submit:
                 if first_name and last_name:
                     profile_data = {
                         "first_name": first_name,
                         "last_name": last_name,
                         "email": email if email else None,
-                        "linkedin_url": linkedin_url if linkedin_url else None
+                        "linkedin_url": linkedin_url if linkedin_url else None,
+                        "created_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat()
                     }
                     try:
-                        response = requests.post(f"{API_URL}/profiles", json=profile_data)
-                        if response.status_code == 200:
+                        response = supabase.table("profiles").insert(profile_data).execute()
+                        if hasattr(response, 'data'):
                             st.success("Profile created successfully!")
                             st.session_state.show_new_profile_form = False
                             st.rerun()
                         else:
-                            error_detail = response.json().get("detail", "Unknown error")
-                            st.error(f"Failed to create profile: {error_detail}")
+                            st.error("Failed to create profile")
                     except Exception as e:
                         st.error(f"Error creating profile: {e}")
-        with col2:
-            if st.button("Cancel"):
-                st.session_state.show_new_profile_form = False
-                st.rerun()
-    else:
-        # Find selected profile
-        selected_profile_data = next((p for p in profiles if f"{p['first_name']} {p['last_name']}" == selected_profile), None)
-        if selected_profile_data:
-            st.session_state.selected_profile = selected_profile_data
-            if not st.session_state.profile_data:
-                st.session_state.profile_data = load_profile_data(selected_profile_data["id"])
+                else:
+                    st.error("First name and last name are required")
 
 # Main content
-if st.session_state.selected_profile and st.session_state.profile_data:
+if st.session_state.selected_profile:
     profile = st.session_state.selected_profile
-    data = st.session_state.profile_data
     
     st.title(f"📊 Content Strategy for {profile['first_name']} {profile['last_name']}")
     
@@ -178,14 +217,14 @@ if st.session_state.selected_profile and st.session_state.profile_data:
         col1, col2 = st.columns(2)
         
         with col1:
-            icp = st.text_area("Ideal Customer Profile (ICP)", value=data.get("icp", ""))
-            pain_points = st.text_area("ICP Pain Points", value=data.get("icp_pain_points", ""))
-            unique_value = st.text_area("Unique Value Add", value=data.get("unique_value", ""))
+            icp = st.text_area("Ideal Customer Profile (ICP)", value=profile.get("icp", ""))
+            pain_points = st.text_area("ICP Pain Points", value=profile.get("icp_pain_points", ""))
+            unique_value = st.text_area("Unique Value Add", value=profile.get("unique_value", ""))
         
         with col2:
-            proof_points = st.text_area("Proof Points", value=data.get("proof_points", ""))
-            energizing_topics = st.text_area("Energizing Topics", value=data.get("energizing_topics", ""))
-            decision_makers = st.text_area("Decision Makers", value=data.get("decision_makers", ""))
+            proof_points = st.text_area("Proof Points", value=profile.get("proof_points", ""))
+            energizing_topics = st.text_area("Energizing Topics", value=profile.get("energizing_topics", ""))
+            decision_makers = st.text_area("Decision Makers", value=profile.get("decision_makers", ""))
         
         if st.form_submit_button("Save Customer Data"):
             update_data = {
@@ -194,13 +233,29 @@ if st.session_state.selected_profile and st.session_state.profile_data:
                 "unique_value": unique_value,
                 "proof_points": proof_points,
                 "energizing_topics": energizing_topics,
-                "decision_makers": decision_makers
+                "decision_makers": decision_makers,
+                "updated_at": datetime.now().isoformat()
             }
-            if save_profile_data(profile["id"], update_data):
-                st.success("Customer data saved!")
-                st.session_state.profile_data = load_profile_data(profile["id"])
-            else:
-                st.error("Failed to save customer data")
+            try:
+                response = supabase.table("profiles").update(update_data).eq("id", profile["id"]).execute()
+                if hasattr(response, 'data'):
+                    st.success("Customer data saved!")
+                    st.session_state.profile_data = load_profile_data(profile["id"])
+                else:
+                    st.error("Failed to save customer data")
+            except Exception as e:
+                st.error(f"Error saving customer data: {e}")
+
+    # Display last updated time if available
+    if profile.get("updated_at"):
+        try:
+            updated_at = datetime.fromisoformat(profile["updated_at"].replace("Z", "+00:00"))
+            local_tz = pytz.timezone("America/Los_Angeles")  # Using Pacific Time
+            local_time = updated_at.astimezone(local_tz)
+            st.info(f"Last updated: {local_time.strftime('%Y-%m-%d %I:%M %p %Z')}")
+        except Exception as e:
+            st.info("Last updated: Unknown")
+            logging.warning(f"Error formatting timestamp: {e}")
     
     # 2. Content Strategy Section
     st.header("🎯 Content Strategy")
@@ -215,21 +270,21 @@ if st.session_state.selected_profile and st.session_state.profile_data:
             if generate_strategy(profile["id"]):
                 st.success("Strategy generated!")
                 # Store the current strategy before updating
-                st.session_state.previous_strategy = data.get("content_strategy")
+                st.session_state.previous_strategy = profile.get("content_strategy")
                 st.session_state.profile_data = load_profile_data(profile["id"])
                 st.rerun()
             else:
                 st.error("Failed to generate strategy")
     
     # Display and edit strategy
-    strategy = data.get("content_strategy", "")
+    strategy = profile.get("content_strategy", "")
     if strategy:
         col1, col2 = st.columns([2, 1])
         
         with col1:
             st.subheader("Current Strategy")
             # Display last updated timestamp if available
-            updated_at = data.get("updated_at")
+            updated_at = profile.get("updated_at")
             if updated_at:
                 try:
                     logging.info(f"Raw updated_at value: {updated_at}")
@@ -270,20 +325,19 @@ if st.session_state.selected_profile and st.session_state.profile_data:
                         
                         # Call OpenAI to update strategy based on feedback
                         try:
-                            response = requests.post(
-                                f"{API_URL}/profiles/{profile['id']}/update-strategy",
-                                json={"feedback": feedback}
+                            response = openai_client.chat.completions.create(
+                                model="gpt-4",
+                                messages=[{"role": "user", "content": feedback}],
+                                temperature=0.7,
+                                max_tokens=1000
                             )
-                            if response.status_code == 200:
-                                new_strategy = response.json().get("content_strategy")
-                                if save_profile_data(profile["id"], {"content_strategy": new_strategy}):
-                                    st.success("Strategy updated based on feedback!")
-                                    st.session_state.profile_data = load_profile_data(profile["id"])
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to save updated strategy")
+                            new_strategy = response.choices[0].message.content
+                            if save_profile_data(profile["id"], {"content_strategy": new_strategy}):
+                                st.success("Strategy updated based on feedback!")
+                                st.session_state.profile_data = load_profile_data(profile["id"])
+                                st.rerun()
                             else:
-                                st.error("Failed to update strategy")
+                                st.error("Failed to save updated strategy")
                         except Exception as e:
                             st.error(f"Error updating strategy: {e}")
                 else:
@@ -305,7 +359,7 @@ if st.session_state.selected_profile and st.session_state.profile_data:
     st.header("📌 Content Pillars")
     with st.form("pillars_form"):
         # Ensure pillars is a list, even if None
-        pillars = data.get("content_pillars", []) or []
+        pillars = profile.get("content_pillars", []) or []
         
         for i in range(3):
             pillar = st.text_input(f"Pillar {i+1}", value=pillars[i] if i < len(pillars) else "")
@@ -336,7 +390,7 @@ if st.session_state.selected_profile and st.session_state.profile_data:
                 st.error("Failed to generate prompts")
     
     # Display prompts
-    prompts = data.get("linkedin_prompts", [])
+    prompts = profile.get("linkedin_prompts", [])
     if prompts:
         st.write(f"Found {len(prompts)} prompts")
         
