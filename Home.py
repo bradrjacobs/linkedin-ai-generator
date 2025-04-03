@@ -11,23 +11,31 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Load environment variables
 load_dotenv()
 
-# Debug API key loading
+# Debug secrets
+st.write("### Debugging Secrets:")
 try:
+    # Show all available secrets (without revealing values)
+    st.write("Available secret keys:", list(st.secrets.keys()))
+    
+    # Try to access the OpenAI key specifically
     api_key = st.secrets["OPENAI_API_KEY"]
-    st.write("API Key status:", "Not set" if not api_key else "Set (length: " + str(len(api_key)) + ")")
+    st.write("✅ Found OPENAI_API_KEY in secrets")
+    st.write("Key length:", len(api_key))
+    st.write("Key starts with:", api_key[:7] + "..." if api_key else "N/A")
 except Exception as e:
-    st.error(f"Error loading API key from secrets: {str(e)}")
-    st.info("Make sure you've added OPENAI_API_KEY to your Streamlit secrets.")
+    st.error(f"❌ Error accessing secrets: {str(e)}")
+    st.write("Full error details:", e)
     st.stop()
 
 # Initialize OpenAI client
 try:
-    client = OpenAI(api_key=api_key)  # Use the api_key we got from st.secrets
+    client = OpenAI(api_key=api_key)
     # Test the client with a simple API call
     models = client.models.list()
-    st.success("OpenAI client initialized successfully!")
+    st.success("✅ OpenAI client initialized successfully!")
 except Exception as e:
-    st.error(f"Error initializing OpenAI client: {str(e)}")
+    st.error(f"❌ Error initializing OpenAI client: {str(e)}")
+    st.write("Full error details:", e)
     st.stop()
 
 # Initialize session state
