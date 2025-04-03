@@ -1,10 +1,9 @@
 import streamlit as st
 import logging
 from datetime import datetime
-from openai import OpenAI
+import openai
 import os
 from dotenv import load_dotenv
-import openai
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -30,14 +29,11 @@ except Exception as e:
 
 # Initialize OpenAI client
 try:
-    # Set environment variable first
-    os.environ["OPENAI_API_KEY"] = api_key
-    
-    # Create client after setting environment variable
-    client = OpenAI(api_key=api_key)
+    # Set API key for OpenAI
+    openai.api_key = api_key
     
     # Test with a simple API call
-    models = client.models.list()
+    models = openai.Model.list()
     st.success("✅ OpenAI client initialized and tested successfully!")
     st.write("Available models:", [model.id for model in models.data[:5]])
 except Exception as e:
