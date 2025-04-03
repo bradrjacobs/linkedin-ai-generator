@@ -4,6 +4,7 @@ from datetime import datetime
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+import openai
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,17 +30,21 @@ except Exception as e:
 
 # Initialize OpenAI client
 try:
-    # Create client with minimal configuration
-    client = OpenAI()  # Let it use the environment variable
-    os.environ["OPENAI_API_KEY"] = api_key  # Set the environment variable
-    
+    # Set the API key in environment first
+    os.environ["OPENAI_API_KEY"] = api_key
+    # Then create the client
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://api.openai.com/v1",
+        timeout=60.0,
+    )
     # Test with a simple API call
     response = client.models.list()
     st.success("✅ OpenAI client initialized and tested successfully!")
 except Exception as e:
     st.error(f"❌ Error initializing OpenAI client: {str(e)}")
     st.write("Full error details:", e)
-    st.write("OpenAI version:", OpenAI.__version__)  # Add version info for debugging
+    st.write("OpenAI package version:", openai.__version__)
     st.stop()
 
 # Initialize session state
