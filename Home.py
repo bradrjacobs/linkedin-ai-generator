@@ -29,10 +29,13 @@ except Exception as e:
 
 # Initialize OpenAI client
 try:
-    client = OpenAI(api_key=api_key)
-    # Test the client with a simple API call
-    models = client.models.list()
-    st.success("✅ OpenAI client initialized successfully!")
+    # Initialize with just the API key
+    client = OpenAI(
+        api_key=api_key,
+    )
+    # Simple test call
+    response = client.models.list()
+    st.success("✅ OpenAI client initialized and tested successfully!")
 except Exception as e:
     st.error(f"❌ Error initializing OpenAI client: {str(e)}")
     st.write("Full error details:", e)
